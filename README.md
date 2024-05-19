@@ -1,0 +1,2 @@
+# macro
+Macros are amazing!
