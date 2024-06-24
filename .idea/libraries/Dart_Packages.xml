@@ -1,0 +1,20 @@
+<component name="libraryTable">
+  <library name="Dart Packages" type="DartPackagesLibraryType">
+    <properties>
+      <option name="packageNameToDirsMap">
+        <entry key="_macros">
+          <value>
+            <list>
+              <option value="$PROJECT_DIR$/../../flutter/bin/cache/dart-sdk/pkg/_macros/lib" />
+            </list>
+          </value>
+        </entry>
+      </option>
+    </properties>
+    <CLASSES>
+      <root url="file://$PROJECT_DIR$/../../flutter/bin/cache/dart-sdk/pkg/_macros/lib" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

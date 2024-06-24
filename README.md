@@ -1,2 +1,4 @@
-# macro
-Macros are amazing!
+## Usage
+```dart
+to make
+```
