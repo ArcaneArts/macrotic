@@ -1,10 +1,9 @@
 name: macrotic
 description: Macros are awesome!
-version: 1.0.0
+version: 1.0.1
 repository: https://github.com/ArcaneArts/macrotic
 environment:
   sdk: ^3.5.0-167
 dependencies:
-  _macros:
-    sdk: dart
-    version: 0.1.5
+  collection: ^1.19.0
+  macros: ^0.1.0-main.5
