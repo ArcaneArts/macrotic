@@ -1,3 +1,7 @@
+## 1.0.2
+
+* Reflection support
+
 ## 1.0.1
 
 * @Model is amazing

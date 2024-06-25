@@ -1,6 +1,6 @@
 name: macrotic
 description: Macros are awesome!
-version: 1.0.1
+version: 1.0.2
 repository: https://github.com/ArcaneArts/macrotic
 environment:
   sdk: ^3.5.0-167
