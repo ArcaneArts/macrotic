@@ -1,9 +1,11 @@
 name: macrotic
-description: Macros are awesome!
-version: 1.0.2
+description: Macros are awesome! Define immutable fully featured json models with copyWith, reflection & more!
+version: 1.0.4
 repository: https://github.com/ArcaneArts/macrotic
 environment:
   sdk: ^3.5.0-167
 dependencies:
   collection: ^1.19.0
-  macros: ^0.1.0-main.5
+  macros: ^0.1.2-main.4
+dev_dependencies:
+  test: ^1.25.7

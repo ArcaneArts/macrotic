@@ -1,3 +1,11 @@
+## 1.0.4
+
+* Meta
+
+## 1.0.3
+
+* LGTM
+
 ## 1.0.2
 
 * Reflection support
