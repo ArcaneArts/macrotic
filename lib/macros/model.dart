@@ -4,38 +4,21 @@ import 'dart:convert' as c;
 import 'package:collection/collection.dart';
 import 'package:macros/macros.dart';
 
-class _Context {
-  List<FieldDeclaration> properties;
-  ClassDeclaration? superClazz;
-  List<FieldDeclaration>? superProperties;
-  List<MethodDeclaration> methods;
-  List<ClassDeclaration> superTree;
-  List<ClassDeclaration> subclasses;
-  
-  _Context(this.properties, this.superClazz, this.superProperties, this.methods, this.superTree, this.subclasses);
-  
-  String fieldSelfRef(FieldDeclaration dec) {
-    return selfReference(superTree.where((i) => i.identifier == dec.definingType).first);
-  }
-  
-  String selfReference(ClassDeclaration dec) {
-    int v = superTree.indexOf(dec);
+// https://github.com/flutter/flutter/issues/151017
+const modeScanSubclasses = false;
+
+macro class $MutableInjector implements ClassDeclarationsMacro {
+  final Type target;
+
+  const $MutableInjector(this.target);
+
+  @override
+  FutureOr<void> buildDeclarationsForClass(ClassDeclaration clazz, MemberDeclarationBuilder builder) async {
     
-    if(v == -1){
-      return "idk";
-    }
-    
-    if(v == 0){
-      return "this";
-    }
-    
-    else {
-      return List.generate(v, (i) => "super").join(".");
-    }
   }
 }
 
-macro class Model implements ClassDeclarationsMacro {
+macro class Model implements ClassDeclarationsMacro, ClassTypesMacro {
   final bool withFields ;
   final bool withConstructor ;
   final bool withFromMap ;
@@ -61,34 +44,64 @@ macro class Model implements ClassDeclarationsMacro {
     this.withHashCode = true,
     this.withEquals = true,
     this.withToString = true,
-    this.withMirror = true
+    this.withMirror = true,
   });
 
+  Future<bool> shouldImport(ClassDeclaration clazz) async {
+    if(clazz.metadata.any((i) => i is ClassDeclaration && (i as ClassDeclaration).identifier.name == "Mutable")){
+      return false;
+    }
+    
+    return true;
+  }
+
+  @override
+  FutureOr<void> buildTypesForClass(ClassDeclaration clazz, ClassTypeBuilder builder) async {
+    builder.declareType("_import_hack", DeclarationCode.fromString(
+        "import 'package:macrotic/macrotic.dart';\n"));
+    
+
+    builder.declareType("Mutable${clazz.identifier.name}", DeclarationCode.fromString("""
+@\$MutableInjector(${clazz.identifier.name})
+class Mutable${clazz.identifier.name} {
+  
+}
+    """));
+
+    builder.declareType("XMutable${clazz.identifier.name}", DeclarationCode.fromString("""
+extension XMutable${clazz.identifier.name} on ${clazz.identifier.name} {
+ Mutable${clazz.identifier.name} get mutable {
+   return Mutable${clazz.identifier.name}();
+ } 
+}
+    """));
+  }
+  
   @override
   FutureOr<void> buildDeclarationsForClass(ClassDeclaration clazz, MemberDeclarationBuilder builder) async {
-    builder.declareInLibrary(DeclarationCode.fromString(
-        "import 'package:macrotic/macrotic.dart';\n"));
+
     List<FieldDeclaration> properties = await _validFields(clazz, builder);
     List<MethodDeclaration> methods = await _validMethods(clazz, builder);
     ClassDeclaration? superClazz = await clazz.getSuperclassDeclaration(builder);
     List<ClassDeclaration> tree = await _calculateSuperTree(clazz, builder);
     List<FieldDeclaration>? superProperties = [];
     List<ClassDeclaration> subclasses = [];
-    
+
     for(ClassDeclaration i in tree.sublist(1)){
       superProperties.addAll(await _validFields(i, builder));
     }
-    
-    // TODO: This is currently unimplemented by dart at runtime?
-    for(TypeDeclaration i in await builder.typesOf(clazz.library)){
-      if(i is ClassDeclaration && i.superclass?.identifier == clazz.identifier){
-        subclasses.add(i);
+
+    if(modeScanSubclasses){
+      for(TypeDeclaration i in await builder.typesOf(clazz.library)){
+        if(i is ClassDeclaration && i.superclass?.identifier == clazz.identifier){
+          subclasses.add(i);
+        }
       }
     }
 
     _Context context = _Context(properties, superClazz, superProperties, methods, tree, subclasses);
 
-  
+
     if(subclasses.isNotEmpty){
       builder.declareInType(DeclarationCode.fromString(asCode("""
       static final Map<String, ${clazz.identifier.name} Function(Map<String, dynamic>)> _subConstructors = { 
@@ -96,7 +109,7 @@ macro class Model implements ClassDeclarationsMacro {
       }; 
       """)));
     }
-    
+
     if(withFields) await buildFields(clazz, builder, context);
     if(withConstructor) await buildConstructor(clazz, builder, context);
     if(withFromMap) await buildFromMap(clazz, builder, context);
@@ -108,8 +121,6 @@ macro class Model implements ClassDeclarationsMacro {
     if(withEquals) await buildEquals(clazz, builder, context);
     if(withToString) await buildToString(clazz, builder, context);
     if(withMirror) await buildMirror(clazz, builder, context);
-    
-
   }
 
   static bool deepEq(Object? e1, Object? e2) => const DeepCollectionEquality().equals(e1, e2);
@@ -217,7 +228,7 @@ macro class Model implements ClassDeclarationsMacro {
 
     return s.join("\n");
   }
-  
+
   Future<List<ClassDeclaration>> _calculateSuperTree(ClassDeclaration clazz, MemberDeclarationBuilder builder) async {
     List<ClassDeclaration> tree = [];
     ClassDeclaration? current = clazz;
@@ -227,13 +238,13 @@ macro class Model implements ClassDeclarationsMacro {
       current = await current.getSuperclassDeclaration(builder);
     }
 
-    return tree;    
+    return tree;
   }
 
   Future<List<FieldDeclaration>> _validFields(ClassDeclaration clazz, MemberDeclarationBuilder builder) async => (await builder.fieldsOf(clazz)).where((i) => i.hasStatic && i.hasConst && i.identifier.name.startsWith("\$")).toList();
-  
+
   Future<List<MethodDeclaration>> _validMethods(ClassDeclaration clazz, MemberDeclarationBuilder builder) async => (await builder.methodsOf(clazz)).where((i) => !i.hasStatic).toList();
-  
+
   Future<void> buildFields(ClassDeclaration clazz, MemberDeclarationBuilder builder, _Context context) async {
     List<FieldDeclaration> properties = context.properties;
 
@@ -258,8 +269,8 @@ macro class Model implements ClassDeclarationsMacro {
     ${properties.map((i) => "/// [${i.identifier.name.substring(1)}] ${i.type.fullName}").join("\n    ")}
     const ${clazz.identifier.name}({
         ${properties.map((i) => "this.${i.identifier.name.substring(1)} = ${i.identifier.name}")
-        .followedBy(context.superClazz == null ? [] : context.superProperties!.map((i) => "${i.type.fullName} ${i.identifier.name.substring(1)} = ${i.definingType.name}.${i.identifier.name}"))
-        .join(",\n        ")}
+          .followedBy(context.superClazz == null ? [] : context.superProperties!.map((i) => "${i.type.fullName} ${i.identifier.name.substring(1)} = ${i.definingType.name}.${i.identifier.name}"))
+          .join(",\n        ")}
     })${context.superClazz != null ? " : super(${context.superProperties!.map((i) => "${i.identifier.name.substring(1)}: ${i.identifier.name.substring(1)}").join(",\n        ")})" : ""};
     """)));
     }
@@ -273,14 +284,14 @@ macro class Model implements ClassDeclarationsMacro {
     /// Creates a new [${clazz.identifier.name}] object from a Map<String, dynamic>
     factory ${clazz.identifier.name}.fromMap(Map<String, dynamic> map) => ${clazz.identifier.name}();
       """)));
-    } else{ 
+    } else{
       builder.declareInType(DeclarationCode.fromString(asCode("""
     /// Creates a new [${clazz.identifier.name}] object from a Map<String, dynamic>
     factory ${clazz.identifier.name}.fromMap(Map<String, dynamic> map) => ${context.subclasses.isNotEmpty?"_subConstructors[map[\"_${clazz.identifier.name}Type\"] ?? \"?\"]?.call(map) ?? ":""}${clazz.identifier.name}(
         ${properties.map((i) => "${i.identifier.name.substring(1)}: map[\"${i.identifier.name.substring(1)}\"] != null ? ${_fromMap(i, builder)} : ${i.identifier.name}")
-          .followedBy(context.superClazz != null ? 
-            context.superProperties!.map((i) => "${i.identifier.name.substring(1)}: map[\"${i.identifier.name.substring(1)}\"] != null ? ${_fromMap(i, builder)} : ${i.definingType.name}.${i.identifier.name}")
-       : [])
+          .followedBy(context.superClazz != null ?
+      context.superProperties!.map((i) => "${i.identifier.name.substring(1)}: map[\"${i.identifier.name.substring(1)}\"] != null ? ${_fromMap(i, builder)} : ${i.definingType.name}.${i.identifier.name}")
+          : [])
           .join(",\n        ")}
     );
     """)));
@@ -368,7 +379,7 @@ macro class Model implements ClassDeclarationsMacro {
           .followedBy(properties.where((i) => i.type.name == "Map").map((i) => "bool Function(${(i.type as NamedTypeAnnotation).typeArguments.first.fullName})? remove${i.identifier.name.substring(1,2).toUpperCase()}${i.identifier.name.substring(2)}KeysWhere"))
           .followedBy(properties.where((i) => i.type.name == "Map").map((i) => "Iterable<${(i.type as NamedTypeAnnotation).typeArguments.last.fullName}>? remove${i.identifier.name.substring(1,2).toUpperCase()}${i.identifier.name.substring(2)}Values"))
           .followedBy(properties.where((i) => i.type.name == "Map").map((i) => "bool Function(${(i.type as NamedTypeAnnotation).typeArguments.last.fullName})? remove${i.identifier.name.substring(1,2).toUpperCase()}${i.identifier.name.substring(2)}ValuesWhere"))
-      .followedBy(context.superClazz == null ? <String>[] : <String>[
+          .followedBy(context.superClazz == null ? <String>[] : <String>[
         ...context.superProperties!.map((i) => "${i.type.fullName}? ${i.identifier.name.substring(1)}"),
         ...context.superProperties!.where((i) => i.type.name == "List" || i.type.name == "Set").map((i) => "Iterable<${(i.type as NamedTypeAnnotation).typeArguments.first.fullName}>? add${i.identifier.name.substring(1,2).toUpperCase()}${i.identifier.name.substring(2)}"),
         ...context.superProperties!.where((i) => i.type.name == "List" || i.type.name == "Set").map((i) => "Iterable<${(i.type as NamedTypeAnnotation).typeArguments.first.fullName}>? remove${i.identifier.name.substring(1,2).toUpperCase()}${i.identifier.name.substring(2)}"),
@@ -378,7 +389,7 @@ macro class Model implements ClassDeclarationsMacro {
         ...context.superProperties!.where((i) => i.type.name == "Map").map((i) => "bool Function(${(i.type as NamedTypeAnnotation).typeArguments.first.fullName})? remove${i.identifier.name.substring(1,2).toUpperCase()}${i.identifier.name.substring(2)}KeysWhere"),
         ...context.superProperties!.where((i) => i.type.name == "Map").map((i) => "Iterable<${(i.type as NamedTypeAnnotation).typeArguments.last.fullName}>? remove${i.identifier.name.substring(1,2).toUpperCase()}${i.identifier.name.substring(2)}Values"),
         ...context.superProperties!.where((i) => i.type.name == "Map").map((i) => "bool Function(${(i.type as NamedTypeAnnotation).typeArguments.last.fullName})? remove${i.identifier.name.substring(1,2).toUpperCase()}${i.identifier.name.substring(2)}ValuesWhere"),
-])
+      ])
           .join(",\n      ")}
     }) => ${clazz.identifier.name}(
         ${properties.map((i) {
@@ -405,7 +416,7 @@ macro class Model implements ClassDeclarationsMacro {
         }
 
         return "${i.identifier.name.substring(1)}: $s";
-      })) 
+      }))
           .join(",\n        ")}
     );
     """)));
@@ -593,6 +604,37 @@ macro class Model implements ClassDeclarationsMacro {
   }
 }
 
+class _Context {
+  List<FieldDeclaration> properties;
+  ClassDeclaration? superClazz;
+  List<FieldDeclaration>? superProperties;
+  List<MethodDeclaration> methods;
+  List<ClassDeclaration> superTree;
+  List<ClassDeclaration> subclasses;
+
+  _Context(this.properties, this.superClazz, this.superProperties, this.methods, this.superTree, this.subclasses);
+
+  String fieldSelfRef(FieldDeclaration dec) {
+    return selfReference(superTree.where((i) => i.identifier == dec.definingType).first);
+  }
+
+  String selfReference(ClassDeclaration dec) {
+    int v = superTree.indexOf(dec);
+
+    if(v == -1){
+      return "idk";
+    }
+
+    if(v == 0){
+      return "this";
+    }
+
+    else {
+      return List.generate(v, (i) => "super").join(".");
+    }
+  }
+}
+
 class MirrorField<O, T>{
   final String name;
   final Type type;
@@ -630,11 +672,11 @@ class ModelMirror<O>{
 
 extension XClassDeclaration on ClassDeclaration {
   Future<ClassDeclaration?> getSuperclassDeclaration(MemberDeclarationBuilder builder) async {
-      if(superclass == null){
-        return null;
-      }
-      
-      return builder.typeDeclarationOf(superclass!.identifier).then((value) => value is ClassDeclaration ? value : null);
+    if(superclass == null){
+      return null;
+    }
+
+    return builder.typeDeclarationOf(superclass!.identifier).then((value) => value is ClassDeclaration ? value : null);
   }
 }
 

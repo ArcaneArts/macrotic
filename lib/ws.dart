@@ -1,20 +1,12 @@
+import 'package:macrotic/macros/model.dart';
 import 'package:macrotic/macrotic.dart';
 
 @Model()
 class A {
   static const int $a = -1;
+  static const String $b = "Hello";
 }
 
-@Model()
-class B extends A {
-  static const int $b = -1;
-}
-
-void main() {
-  B p = B(
-    a: 1,
-    b: 2,
-  );
-
-  print(p.toJson(pretty: true));
+void go() {
+  A().toJson();
 }
